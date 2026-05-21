@@ -34,7 +34,7 @@ export interface AgentConfig {
   /** Number of nested subagent generations this agent may spawn. Default: 0. */
   maxDepth: number;
   systemPrompt: string;
-  source: "user" | "project";
+  source: "user" | "project" | "extension";
   filePath: string;
 }
 
@@ -124,7 +124,7 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
   }
 }
 
-export function discoverAgents(cwd: string): AgentConfig[] {
+export function discoverAgents(cwd: string, extraPaths?: string[]): AgentConfig[] {
   const agentMap = new Map<string, AgentConfig>();
 
   // Bundled package agents (lowest priority)
@@ -140,7 +140,16 @@ export function discoverAgents(cwd: string): AgentConfig[] {
     agentMap.set(agent.name, agent);
   }
 
-  // Project agents override user agents
+  // Extension-contributed agents override user agents, but not project
+  if (extraPaths) {
+    for (const dir of extraPaths) {
+      for (const agent of loadAgentsFromDir(dir, "extension")) {
+        agentMap.set(agent.name, agent);
+      }
+    }
+  }
+
+  // Project agents override extension agents
   const projectDir = findNearestProjectAgentsDir(cwd);
   if (projectDir) {
     for (const agent of loadAgentsFromDir(projectDir, "project")) {

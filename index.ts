@@ -37,6 +37,12 @@ let _bgManager: BackgroundJobManager | null = null;
 let _onBgJobComplete: ((job: BackgroundSubagentJob) => void) | null = null;
 let _setBgStatus: ((text: string | undefined) => void) | null = null;
 
+/**
+ * Additional agent directories contributed by other extensions
+ * via the subagents:discover event bus event.
+ */
+const _extraAgentPaths: string[] = [];
+
 function getBgManager(): BackgroundJobManager {
   if (!_bgManager) _bgManager = new BackgroundJobManager({
     onJobComplete: (job) => _onBgJobComplete?.(job),
@@ -88,6 +94,14 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     _setBgStatus = (text) => ctx.ui.setStatus(BG_STATUS_KEY, text);
 
+    // Collect agent directories from other extensions via event bus
+    _extraAgentPaths.length = 0;
+    const collector: { agentPaths: string[] } = { agentPaths: [] };
+    pi.events.emit("subagents:discover", collector);
+    for (const p of collector.agentPaths) {
+      _extraAgentPaths.push(p);
+    }
+
     // Warm one extension-capable loader after startup so first `tools: all`
     // subagent call reuses loaded extensions instead of blocking.
     if (process.env.PI_FAST_SUBAGENT_WARM !== "0") {
@@ -129,13 +143,13 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("fast-subagent:agent", {
     description: "List available subagents. Usage: /fast-subagent:agent [name] — show details for a specific agent.",
     getArgumentCompletions(prefix: string) {
-      const agents = discoverAgents(process.cwd());
+      const agents = discoverAgents(process.cwd(), _extraAgentPaths);
       return agents
         .filter((a) => a.name.startsWith(prefix))
         .map((a) => ({ value: a.name, label: a.name, description: a.description }));
     },
     async handler(args: string, ctx) {
-      const agents = discoverAgents(ctx.cwd);
+      const agents = discoverAgents(ctx.cwd, _extraAgentPaths);
       const name = args.trim();
 
       if (name) {
@@ -328,7 +342,7 @@ export default function (pi: ExtensionAPI) {
 
     async execute(_id: string, params: Record<string, any>, signal: AbortSignal | undefined, onUpdate, ctx: ExtensionContext): Promise<any> {
       const cwd = params.cwd ?? ctx.cwd;
-      const agents = discoverAgents(cwd);
+      const agents = discoverAgents(cwd, _extraAgentPaths);
 
       const findAgent = (name: string): { agent?: AgentConfig; error?: string } => {
         const found = agents.find((a) => a.name === name);
