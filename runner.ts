@@ -5,13 +5,11 @@
  * via `onUpdate`, and enforces the per-agent `maxDepth` gate on nested calls.
  */
 
-import {
-  AuthStorage,
-  createAgentSession,
-  getAgentDir,
-  ModelRegistry,
-  SessionManager,
-} from "@mariozechner/pi-coding-agent";
+import { AuthStorage } from "@mariozechner/pi-coding-agent"
+import { createAgentSession } from "@mariozechner/pi-coding-agent"
+import { getAgentDir } from "@mariozechner/pi-coding-agent"
+import { ModelRegistry } from "@mariozechner/pi-coding-agent"
+import { SessionManager } from "@mariozechner/pi-coding-agent"
 
 import { type AgentConfig, agentNeedsExtensions } from "./agents.js";
 import { allowUiPaint, defaultLoaderPool, LoaderPool } from "./loader-pool.js";
@@ -66,6 +64,8 @@ export function getCurrentDepth(): number {
 
 export interface RunAgentDeps {
   loaderPool?: LoaderPool;
+  /** Event bus for cross-extension communication. */
+  events?: { emit(channel: string, data: unknown): void };
 }
 
 export async function runAgent(
@@ -116,11 +116,22 @@ export async function runAgent(
 
   const createPrevEnvDepth = process.env[DEPTH_ENV];
   process.env[DEPTH_ENV] = String(depth + 1);
+
+  // Emit subagents:before-start event so extensions can modify the system prompt
+  const subagentEvent: { agentName: string; systemPrompt: string; task: string } = {
+    agentName: agent.name,
+    systemPrompt: agent.systemPrompt || "",
+    task,
+  };
+  deps.events?.emit("subagents:before_agent_start", subagentEvent);
+
+  const effectivePrompt = subagentEvent.systemPrompt || undefined;
+
   const loaderLease = await pool.acquire(
     cwd,
     agentDir,
     noExtensions,
-    agent.systemPrompt || undefined,
+    effectivePrompt,
   );
 
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"];

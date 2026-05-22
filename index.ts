@@ -439,6 +439,7 @@ export default function (pi: ExtensionAPI) {
           const handle: BackgroundHandleLike = { abort: () => bgAbort.abort() };
           const resultPromise: Promise<BackgroundJobResult> = runAgent(
             agent, params.task, cwd, effectiveModel, bgAbort.signal, undefined,
+            undefined, { events: pi.events },
           ).then((r) => ({ summary: r.output, exitCode: r.exitCode, error: r.error, model: r.model }));
           const jobId = getBgManager().adoptHandle(agent.name, params.task, cwd, handle, resultPromise);
           return { content: [{ type: "text", text: `Background job started: ${jobId}\nTo check status, ask me to poll job ${jobId}.` }] };
@@ -459,6 +460,7 @@ export default function (pi: ExtensionAPI) {
 
         const agentRunPromise: Promise<RunResult> = runAgent(
           agent, params.task, cwd, effectiveModel, agentAbort.signal, wrappedOnUpdate,
+          undefined, { events: pi.events },
         );
 
         const bgResultPromise: Promise<BackgroundJobResult> = agentRunPromise
@@ -571,6 +573,7 @@ export default function (pi: ExtensionAPI) {
             signal,
             agentOnUpdate,
             parentDepth,
+            { events: pi.events },
           );
           parallelAgents[i]!.status = result.exitCode === 0 ? "done" : "error";
           parallelAgents[i]!.durMs = Date.now() - agentStart;
