@@ -116,22 +116,12 @@ export async function runAgent(
 
   const createPrevEnvDepth = process.env[DEPTH_ENV];
   process.env[DEPTH_ENV] = String(depth + 1);
-
-  // Emit subagents:before-start event so extensions can modify the system prompt
-  const subagentEvent: { agentName: string; systemPrompt: string; task: string } = {
-    agentName: agent.name,
-    systemPrompt: agent.systemPrompt || "",
-    task,
-  };
-  deps.events?.emit("subagents:before_agent_start", subagentEvent);
-
-  const effectivePrompt = subagentEvent.systemPrompt || undefined;
-
   const loaderLease = await pool.acquire(
     cwd,
     agentDir,
     noExtensions,
-    effectivePrompt,
+    agent.systemPrompt || undefined,
+    deps.events,
   );
 
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"];

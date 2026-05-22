@@ -7,8 +7,9 @@
  * one-loader-per-tuple with a FIFO idle queue.
  */
 
-import { DefaultResourceLoader } from "@mariozechner/pi-coding-agent";
+import { DefaultResourceLoader } from "@mariozechner/pi-coding-agent"
 import type { ResourceLoader } from "@mariozechner/pi-coding-agent";
+import type { HandlerFn, Extension } from "@mariozechner/pi-coding-agent";
 
 type DefaultResourceLoaderOptions = ConstructorParameters<typeof DefaultResourceLoader>[0];
 
@@ -34,9 +35,43 @@ export class AgentPromptResourceLoader implements ResourceLoader {
   constructor(
     private readonly base: ResourceLoader,
     private readonly systemPromptOverride: string | undefined,
+    private readonly parentEvents?: { emit(channel: string, data: unknown): void },
   ) {}
 
-  getExtensions() { return this.base.getExtensions(); }
+  getExtensions() {
+    const result = this.base.getExtensions();
+    if (!this.parentEvents) return result;
+
+    // Inject a forwarding extension that bridges the subagent's
+    // before_agent_start to the parent's event bus, and returns
+    // the modified system prompt.
+    const forwardingExtension: Extension = {
+      path: "pi-fast-subagent:forwarder",
+      resolvedPath: "pi-fast-subagent:forwarder",
+      sourceInfo: { path: "pi-fast-subagent:forwarder", source: "extension", scope: "user", origin: "package" },
+      handlers: new Map<string, HandlerFn[]>([
+        ["before_agent_start", [async (_event: any, _ctx: any) => {
+          const subagentEvent = {
+            agentName: "",
+            systemPrompt: event.systemPrompt,
+            task: "",
+          };
+          this.parentEvents.emit("subagents:before_agent_start", subagentEvent);
+          return { systemPrompt: subagentEvent.systemPrompt };
+        }]],
+      ]),
+      tools: new Map(),
+      messageRenderers: new Map(),
+      commands: new Map(),
+      flags: new Map(),
+      shortcuts: new Map(),
+    };
+
+    return {
+      ...result,
+      extensions: [...result.extensions, forwardingExtension],
+    };
+  }
   getSkills() { return this.base.getSkills(); }
   getPrompts() { return this.base.getPrompts(); }
   getThemes() { return this.base.getThemes(); }
@@ -94,6 +129,7 @@ export class LoaderPool {
     agentDir: string,
     noExtensions: boolean,
     systemPromptOverride: string | undefined,
+    parentEvents?: { emit(channel: string, data: unknown): void },
   ): Promise<LoaderLease> {
     const entry = this.getEntry(cwd, agentDir, noExtensions);
 
@@ -103,7 +139,7 @@ export class LoaderPool {
         entry.active.add(cached);
         let released = false;
         return {
-          loader: new AgentPromptResourceLoader(cached, systemPromptOverride),
+          loader: new AgentPromptResourceLoader(cached, systemPromptOverride, parentEvents),
           release: () => {
             if (released) return;
             released = true;
