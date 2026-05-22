@@ -50,7 +50,7 @@ export class AgentPromptResourceLoader implements ResourceLoader {
       resolvedPath: "pi-fast-subagent:forwarder",
       sourceInfo: { path: "pi-fast-subagent:forwarder", source: "extension", scope: "user", origin: "package" },
       handlers: new Map<string, HandlerFn[]>([
-        ["before_agent_start", [async (_event: any, _ctx: any) => {
+        ["before_agent_start", [async (event: any, _ctx: any) => {
           const subagentEvent = {
             agentName: "",
             systemPrompt: event.systemPrompt,
